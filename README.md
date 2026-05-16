@@ -21,7 +21,7 @@ The model is calibrated using South African TB incidence data (2000–2023) to e
 
 - Incorporation of funding and treatment delays
 - Analysis of disease-free and endemic equilibria
-- Computation of the **basic reproduction number (\(\mathcal{R}_0\))
+- Computation of the basic reproduction number (\(\mathcal{R}_0\))
 - Stability analysis using Routh–Hurwitz criteria
 - Investigation of delay-induced Hopf bifurcation
 - Sensitivity analysis of key epidemiological and control parameters

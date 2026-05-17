@@ -39,23 +39,10 @@ The model is calibrated using South African TB incidence data (2000–2023) to e
 
 
 
-Repository Contents (to be updated upon acceptance)
-
-- MATLAB simulation codes
-- Parameter estimation scripts
-- Numerical simulation routines
-- Figures and plotting scripts
-- Data used for calibration (South African TB data, 2000–2023)
-
-
-
- Status
-
-This repository is currently a placeholder. All codes and data will be uploaded upon acceptance of the manuscript.
 
  Data Availability
 
-The data and MATLAB codes supporting this study will be made publicly available in this repository upon acceptance of the manuscript.
+The datasets and MATLAB code supporting this study are publicly available in this repository.
 
 
  Contact: 

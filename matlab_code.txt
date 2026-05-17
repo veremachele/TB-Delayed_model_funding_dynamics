@@ -1,0 +1,230 @@
+%TB MODEL FITTING
+clear; close all; clc;
+
+%% ---------------------------
+% Observed TB incidence data (2000-2023)
+%% ---------------------------
+years = (2000:2023)';   % updated years
+tdata = years;
+
+data = [ ...
+359357; 412404; 466269; 518954; 563401; 598829; 624978; 641713; 649155; 651779; ...
+643832; 635942; 623878; 606935; 594865; 560429; 460939; 425347; 396810; 366465; ...
+340361; 315508; 291931; 269917];
+
+%% ---------------------------
+% Fixed parameters
+%% ---------------------------
+F0   = 1200;   % baseline funding inflow (fixed)
+tau1 = 10;     % delay 1 (fixed)
+tau2 = 5;      % delay 2 (fixed)
+lags = [tau1, tau2];
+
+%% ---------------------------
+% Parameter ordering and initial guess
+%% ---------------------------
+x0 = [
+    2.0e5,   ... % Pi       (recruitment)
+    0.014,   ... % mu       (natural mortality)
+    1.0e-3,  ... % beta     (transmission) -- slightly higher initial
+    0.25,    ... % epsilon  (P effect on beta)
+    0.65,    ... % q        (fraction to slow progression)
+    0.12,    ... % eta      (transition Ls->Lf)
+    0.02,    ... % rho1     (slow progression rate) - keep >= 0.01
+    0.03,    ... % rho2     (fast progression rate)
+    0.12,    ... % theta
+    0.015,   ... % k
+    0.02,    ... % delta
+    0.02,    ... % gamma
+    0.4,     ... % omega
+    0.04,    ... % mu_f
+    0.03,    ... % alpha0
+    0.001,   ... % alpha
+    0.02,    ... % mu_p
+    0.5        ... % P0
+];
+nParams = numel(x0);
+
+%% ---------------------------
+% Lower and upper bounds
+%% ---------------------------
+lb = [
+    1.0e5; 0.005; 5.0e-4; 0.01; 0.4; 0.01; 0.01; 0.01; 0.05; 0.001;
+    0.005; 0.005; 0.05; 0.005; 0.0; 0.0; 0.005; 0.1
+];
+ub = [
+    5.0e5; 0.03; 5.0e-2; 2.0; 0.9; 0.5; 0.06; 0.08; 0.3; 0.05;
+    0.08; 0.08; 1.0; 0.5; 0.5; 0.5; 0.08; 0.9
+];
+%% ---------------------------
+% Parameter-dependent history function
+%% ---------------------------
+history_fun = @(x) @(t) param_dependent_history(t, x, data(1));
+
+%% ---------------------------
+% Objective function: log-SSR on incidence
+%% ---------------------------
+objfun = @(x) model_obj_incidence(x, tdata, data, history_fun, lags, F0);
+
+%% ---------------------------
+% Particle Swarm (global)
+%% ---------------------------
+useParallelPSO = true;
+try
+    if useParallelPSO
+        poolobj = gcp('nocreate');
+        if isempty(poolobj)
+            parpool('local'); %#ok<UNRCH>
+        end
+    end
+catch
+    % ignore if Parallel Toolbox unavailable
+end
+
+pso_opts = optimoptions('particleswarm', ...
+    'Display','iter', ...
+    'SwarmSize', 10, ...
+    'UseParallel', useParallelPSO, ...
+    'MaxIterations', 30, ...
+    'FunctionTolerance', 1e-3);
+
+disp('Starting particle swarm (global search) ...');
+[x_pso, fval_pso] = particleswarm(objfun, nParams, lb, ub, pso_opts);
+
+%% ---------------------------
+% Local refinement (fmincon)
+%% ---------------------------
+fmin_opts = optimoptions('fmincon', ...
+    'Display','iter', ...
+    'Algorithm','sqp', ...
+    'MaxFunctionEvaluations', 4e4, ...
+    'MaxIterations', 2e3, ...
+    'OptimalityTolerance', 1e-6);
+
+disp('Starting local refinement (fmincon) ...');
+[x_best, fval_best, exitflag, output] = fmincon(objfun, x_pso, [], [], [], [], lb, ub, [], fmin_opts);
+
+%% ---------------------------
+% Display & save results
+%% ---------------------------
+param_names = {'Pi','mu','beta','epsilon','q','eta','rho1','rho2','theta','k','delta','gamma','omega','mu_f','alpha0','alpha','mu_p','P0'};
+fprintf('\nOptimization finished. Exitflag = %d\n', exitflag);
+T = array2table(x_best, 'VariableNames', param_names);
+disp(T);
+fprintf('Final objective (log-SSR) = %.6g\n', fval_best);
+
+save('TB_fit_results_incidence_hist_fixed.mat', 'x_best', 'param_names', 'fval_best', 'exitflag', 'output');
+
+%% ---------------------------
+% Simulate best-fit and plot incidence
+%% ---------------------------
+ddefun_best = @(t,y,Z) TB_DDE_core(t,y,Z, x_best, F0);
+
+dde_opts = ddeset('RelTol',1e-3,'AbsTol',1e-3,'MaxStep',1);
+
+try
+    sol_best = dde23(ddefun_best, lags, history_fun(x_best), [tdata(1) tdata(end)], dde_opts);
+    Yb = deval(sol_best, tdata);
+    Ls_model = Yb(2,:)';
+    Lf_model = Yb(3,:)';
+    Inc_model = x_best(7)*Ls_model + x_best(8)*Lf_model;
+catch ME
+    warning('Final simulation failed: %s', ME.message);
+    Inc_model = NaN(size(data));
+end
+
+figure('Color','w','Units','normalized','Position',[0.2 0.2 0.5 0.5]);
+plot(tdata, data, 'ko','MarkerFaceColor','k','MarkerSize',5); hold on;
+plot(tdata, Inc_model, 'r-', 'LineWidth', 2);
+xlabel('Year'); ylabel('Incidence (new TB cases)');
+legend('Observed','Fitted model','Location','NorthWest');
+title('TB DDE: Fit to incidence data (start fixed)');
+grid on;
+saveas(gcf, 'TB_DDE_fit_incidence_hist_fixed_plot.png');
+
+disp('Saved TB_fit_results_incidence_hist_fixed.mat and plot');
+
+%% ===========================
+%% Nested / helper functions
+%% ===========================
+
+function err = model_obj_incidence(x, tdata, data, history_fun, lags, F0)
+    % Extract parameters
+    Pi    = x(1); mu    = x(2); beta  = x(3); epsilon = x(4);
+    q     = x(5); eta   = x(6); rho1  = x(7); rho2    = x(8);
+    theta = x(9); k     = x(10); delta = x(11); gamma = x(12);
+    omega = x(13); mu_f = x(14); alpha0 = x(15); alpha = x(16);
+    mu_p  = x(17); P0    = x(18);
+
+    if P0 < 0 || P0 > 1
+        err = 1e30; return;
+    end
+
+    ddefun = @(t,y,Z) TB_DDE_core(t,y,Z, x, F0);
+    dde_opts = ddeset('RelTol',1e-3,'AbsTol',1e-3,'MaxStep',1);
+
+    try
+        sol = dde23(ddefun, lags, history_fun(x), [tdata(1) tdata(end)], dde_opts);
+
+        Y = deval(sol, tdata);
+        Ls_model = Y(2,:)';
+        Lf_model = Y(3,:)';
+        inc_model = x(7)*Ls_model + x(8)*Lf_model;
+
+        if any(isnan(inc_model)) || any(inc_model < 0) || max(inc_model) > 1e9
+            err = 1e30; return;
+        end
+
+        err = sum((log(data + 1) - log(inc_model + 1)).^2);
+
+    catch
+        err = 1e30;
+    end
+end
+
+function y0 = param_dependent_history(t, x, inc0)
+    % Compute Ls0 and Lf0 to match first incidence
+    rho1 = x(7); rho2 = x(8);
+    ratio_slow = 0.6; ratio_fast = 0.4;
+
+    Ls0 = ratio_slow * inc0 / rho1;
+    Lf0 = ratio_fast * inc0 / rho2;
+
+    % Other compartments
+    S0 = 1e5; I0 = 0; H0 = 0; R0 = 0;
+    F0_val = 1200; 
+    P0_val = 1;
+
+    y0 = [S0; Ls0; Lf0; I0; H0; R0; F0_val; P0_val];
+end
+
+function dydt = TB_DDE_core(t, y, Z, x, F0)
+    % Unpack parameters from x
+    Pi    = x(1); mu    = x(2); beta  = x(3); epsilon = x(4);
+    q     = x(5); eta   = x(6); rho1  = x(7); rho2    = x(8);
+    theta = x(9); k     = x(10); delta = x(11); gamma = x(12);
+    omega = x(13); mu_f = x(14); alpha0 = x(15); alpha = x(16);
+    mu_p  = x(17); P0    = x(18);
+
+    S  = y(1); Ls = y(2); Lf = y(3);
+    I  = y(4); H  = y(5); R  = y(6);
+    F  = y(7); P  = y(8);
+
+    I_tau1 = Z(4,1);
+    I_tau2 = Z(4,2);
+
+    d0 = mu + rho1; d1 = mu + rho2; d2 = mu + delta; d3 = mu + theta; d4 = mu + k;
+    lambda = beta * I / (1 + epsilon * P);
+    alphaF = alpha0 + alpha * F;
+
+    dS  = Pi - mu*S - lambda*S;
+    dLs = q*lambda*S - eta*lambda*Ls - d0*Ls;
+    dLf = (1 - q)*lambda*S + eta*lambda*Ls - d1*Lf;
+    dI  = rho1*Ls + rho2*Lf + k*R - d2*I - gamma*I_tau2;
+    dH  = gamma*I_tau2 - d3*H;
+    dR  = theta*H - d4*R;
+    dF  = F0 + omega*I_tau1 - mu_f*F;
+    dP  = P0 + alphaF - mu_p*P;
+
+    dydt = [dS; dLs; dLf; dI; dH; dR; dF; dP];
+end

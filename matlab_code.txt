@@ -113,7 +113,7 @@ T = array2table(x_best, 'VariableNames', param_names);
 disp(T);
 fprintf('Final objective (log-SSR) = %.6g\n', fval_best);
 
-save('TB_fit_results_incidence_hist_fixed.mat', 'x_best', 'param_names', 'fval_best', 'exitflag', 'output');
+%%save('TB_fit_results_incidence_hist_fixed.mat', 'x_best', 'param_names', 'fval_best', 'exitflag', 'output');
 
 %% ---------------------------
 % Simulate best-fit and plot incidence
@@ -140,9 +140,7 @@ xlabel('Year'); ylabel('Incidence (new TB cases)');
 legend('Observed','Fitted model','Location','NorthWest');
 title('TB DDE: Fit to incidence data (start fixed)');
 grid on;
-saveas(gcf, 'TB_DDE_fit_incidence_hist_fixed_plot.png');
 
-disp('Saved TB_fit_results_incidence_hist_fixed.mat and plot');
 
 %% ===========================
 %% Nested / helper functions

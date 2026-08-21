@@ -120,14 +120,14 @@ fprintf('Final objective (log-SSR) = %.6g\n', fval_best);
 %% ---------------------------
 ddefun_best = @(t,y,Z) TB_DDE_core(t,y,Z, x_best, F0);
 
-dde_opts = ddeset('RelTol',1e-3,'AbsTol',1e-3,'MaxStep',1);
+dde_opts = ddeset('RelTol',1e-6,'AbsTol',1e-8,'MaxStep',1);
 
 try
     sol_best = dde23(ddefun_best, lags, history_fun(x_best), [tdata(1) tdata(end)], dde_opts);
     Yb = deval(sol_best, tdata);
     Ls_model = Yb(2,:)';
     Lf_model = Yb(3,:)';
-    Inc_model = x_best(7)*Ls_model + x_best(8)*Lf_model;
+    Inc_model = x_best(7)*Ls_model + x_best(8)*Lf_model+ x_best(10)*R_model;
 catch ME
     warning('Final simulation failed: %s', ME.message);
     Inc_model = NaN(size(data));
@@ -167,7 +167,8 @@ function err = model_obj_incidence(x, tdata, data, history_fun, lags, F0)
         Y = deval(sol, tdata);
         Ls_model = Y(2,:)';
         Lf_model = Y(3,:)';
-        inc_model = x(7)*Ls_model + x(8)*Lf_model + x(10)R;
+        R_model = Y(6,:)';
+        inc_model = x(7)*Ls_model + x(8)*Lf_model + x(10)R_model;
 
         if any(isnan(inc_model)) || any(inc_model < 0) || max(inc_model) > 1e9
             err = 1e30; return;

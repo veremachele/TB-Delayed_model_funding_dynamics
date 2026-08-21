@@ -4,7 +4,7 @@ clear; close all; clc;
 %% ---------------------------
 % Observed TB incidence data (2000-2023)
 %% ---------------------------
-years = (2000:2023)';   % updated years
+years = (2000:2023)';   % updated year
 tdata = years;
 
 data = [ ...
@@ -159,7 +159,7 @@ function err = model_obj_incidence(x, tdata, data, history_fun, lags, F0)
     end
 
     ddefun = @(t,y,Z) TB_DDE_core(t,y,Z, x, F0);
-    dde_opts = ddeset('RelTol',1e-3,'AbsTol',1e-3,'MaxStep',1);
+    dde_opts = ddeset('RelTol',1e-6,'AbsTol',1e-8,'MaxStep',0.1);
 
     try
         sol = dde23(ddefun, lags, history_fun(x), [tdata(1) tdata(end)], dde_opts);
@@ -167,7 +167,7 @@ function err = model_obj_incidence(x, tdata, data, history_fun, lags, F0)
         Y = deval(sol, tdata);
         Ls_model = Y(2,:)';
         Lf_model = Y(3,:)';
-        inc_model = x(7)*Ls_model + x(8)*Lf_model;
+        inc_model = x(7)*Ls_model + x(8)*Lf_model + x(10)R;
 
         if any(isnan(inc_model)) || any(inc_model < 0) || max(inc_model) > 1e9
             err = 1e30; return;
